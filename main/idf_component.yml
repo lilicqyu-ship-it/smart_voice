@@ -1,0 +1,13 @@
+dependencies:
+  # Board support for ESP32-S3-LCD-EV-Board (mainboard MB v1.5 + SUB3):
+  # 4.3" 800x480 RGB LCD (ST7262E43) + GT1151 touch + TCA9554 IO expander
+  # + esp_lvgl_port (LVGL9).  Pins/timing mirror bsp/esp32_s3_lcd_ev_board.
+  espressif/esp32_s3_lcd_ev_board: "^4.1.0"
+
+  # Wake word / audio front end (wakenet9 "你好小智")
+  espressif/esp-sr: "^2.5.5"
+
+  # JSON (IDF 6 removed the built-in 'json' component)
+  espressif/cjson: "^1.7.19"
+
+  espressif/led_strip: "^3.0.3"

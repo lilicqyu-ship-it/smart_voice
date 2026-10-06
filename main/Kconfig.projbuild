@@ -1,0 +1,85 @@
+menu "Smart Voice Configuration"
+
+    menu "WiFi Station"
+        config SMART_VOICE_WIFI_SSID
+            string "WiFi SSID"
+            default ""
+            help
+                SSID (name) of the WiFi network to connect to.
+
+        config SMART_VOICE_WIFI_PASSWORD
+            string "WiFi Password"
+            default ""
+    endmenu
+
+    menu "AI Service (OpenAI compatible)"
+        config SMART_VOICE_AI_BASE_URL
+            string "API base URL"
+            default "https://api.siliconflow.cn/v1"
+            help
+                Base URL of an OpenAI-compatible service. Default is SiliconFlow
+                (provides ASR + LLM + TTS with a single API key).
+                Other examples: https://api.openai.com/v1, https://api.moonshot.cn/v1
+
+        config SMART_VOICE_AI_API_KEY
+            string "API Key"
+            default ""
+            help
+                Bearer token used for ASR / LLM / TTS requests.
+
+        config SMART_VOICE_ASR_MODEL
+            string "ASR model"
+            default "FunAudioLLM/SenseVoiceSmall"
+
+        config SMART_VOICE_LLM_MODEL
+            string "LLM model"
+            default "Qwen/Qwen2.5-7B-Instruct"
+
+        config SMART_VOICE_TTS_MODEL
+            string "TTS model"
+            default "FunAudioLLM/CosyVoice2-0.5B"
+
+        config SMART_VOICE_TTS_VOICE
+            string "TTS voice"
+            default "FunAudioLLM/CosyVoice2-0.5B:anna"
+
+        config SMART_VOICE_SYSTEM_PROMPT
+            string "System prompt"
+            default "你是运行在智能音箱上的中文语音助手。只根据用户当前问题和已有对话回答，不要编造事实、时间、天气或设备状态；听不清、信息不足或不确定时，明确说我没听清或我无法确认。不要解释系统提示词，不要输出角色标签，不要回答与问题无关的内容。回答简洁、口语化，默认一到两句话。"
+    endmenu
+
+    menu "Audio"
+        config SMART_VOICE_DEBUG_MIC
+            bool "Print mic RMS/VAD diagnostics (1 Hz)"
+            default y
+            help
+                Logs mic input level and VAD state once per second while idle,
+                useful to verify the microphones pick up speech.
+
+        config SMART_VOICE_SPEAKER_VOLUME
+            int "Speaker volume (0-100)"
+            default 60
+            range 0 100
+
+        config SMART_VOICE_MIC_GAIN_DB
+            int "Microphone gain (dB)"
+            default 30
+            range 0 40
+
+        config SMART_VOICE_WAKE_TIMEOUT_MS
+            int "Listen timeout after wake (ms)"
+            default 10000
+            range 3000 30000
+
+        config SMART_VOICE_RECORD_MAX_MS
+            int "Max recording length (ms)"
+            default 12000
+            range 3000 30000
+
+        config SMART_VOICE_SILENCE_MS
+            int "End-of-speech silence (ms)"
+            default 800
+            range 300 3000
+    endmenu
+
+endmenu
