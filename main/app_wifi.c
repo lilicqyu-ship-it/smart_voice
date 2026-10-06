@@ -27,6 +27,7 @@ static const char *TAG = "wifi";
 
 static EventGroupHandle_t s_wifi_events;
 static esp_timer_handle_t s_retry_timer;
+static esp_netif_t *s_sta_netif;
 static bool s_sntp_started;
 static char s_ip[16];
 
@@ -46,6 +47,28 @@ static void on_got_ip(void *arg, esp_event_base_t base, int32_t id, void *data)
     snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&event->ip_info.ip));
     xEventGroupSetBits(s_wifi_events, WIFI_CONNECTED_BIT);
     ESP_LOGI(TAG, "got ip: %s", s_ip);
+
+    /* Some home routers hand out a DNS server that intermittently returns
+     * EAI_AGAIN. Keep the router as the primary resolver, but provide public
+     * backup resolvers so HTTPS service discovery does not fail randomly. */
+    if (s_sta_netif) {
+        const char *backup_dns[] = { "223.5.5.5", "114.114.114.114" };
+        const esp_netif_dns_type_t dns_types[] = {
+            ESP_NETIF_DNS_BACKUP, ESP_NETIF_DNS_FALLBACK,
+        };
+        for (size_t i = 0; i < 2; i++) {
+            esp_netif_dns_info_t dns = { 0 };
+            dns.ip.type = ESP_IPADDR_TYPE_V4;
+            dns.ip.u_addr.ip4.addr = esp_ip4addr_aton(backup_dns[i]);
+            esp_err_t dns_ret = esp_netif_set_dns_info(s_sta_netif, dns_types[i], &dns);
+            if (dns_ret != ESP_OK) {
+                ESP_LOGW(TAG, "set backup DNS %s failed: %s", backup_dns[i],
+                         esp_err_to_name(dns_ret));
+            } else {
+                ESP_LOGI(TAG, "DNS backup[%d] = %s", (int)i, backup_dns[i]);
+            }
+        }
+    }
 
     /* TLS certificate checks want a roughly correct clock. */
     if (!s_sntp_started) {
@@ -101,7 +124,8 @@ void app_wifi_start(void)
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
+    s_sta_netif = esp_netif_create_default_wifi_sta();
+    ESP_ERROR_CHECK(s_sta_netif != NULL ? ESP_OK : ESP_FAIL);
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));

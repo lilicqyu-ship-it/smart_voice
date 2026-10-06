@@ -546,7 +546,10 @@ static esp_err_t ai_llm_stream(const ai_callbacks_t *cb, char *out_text, size_t 
         return ESP_ERR_NO_MEM;
     }
     cJSON_AddStringToObject(body, "model", CONFIG_SMART_VOICE_LLM_MODEL);
-    cJSON_AddBoolToObject(body, "stream", true);
+    /* A complete JSON response is more reliable on the small device than
+     * parsing a long-lived SSE stream. TTS still starts immediately after the
+     * short response has been decoded. */
+    cJSON_AddBoolToObject(body, "stream", false);
     /* Voice replies should be deterministic and short enough to speak. */
     cJSON_AddNumberToObject(body, "temperature", 0.2);
     cJSON_AddNumberToObject(body, "top_p", 0.85);
@@ -581,6 +584,73 @@ static esp_err_t ai_llm_stream(const ai_callbacks_t *cb, char *out_text, size_t 
         if (!http_fetch_headers_ok(client, "llm")) break;
 
         if (cb && cb->on_llm_start) cb->on_llm_start();
+
+        char *json_resp = heap_caps_malloc(16384, MALLOC_CAP_SPIRAM);
+        if (!json_resp) {
+            ret = ESP_ERR_NO_MEM;
+            break;
+        }
+        size_t json_len = 0;
+        while (json_len < 16383) {
+            int n = esp_http_client_read(client, json_resp + json_len,
+                                         (int)(16383 - json_len));
+            if (n < 0) {
+                ESP_LOGE(TAG, "llm: read failed errno=%d",
+                         esp_http_client_get_errno(client));
+                ret = ESP_FAIL;
+                break;
+            }
+            if (n == 0) break;
+            json_len += (size_t)n;
+        }
+        json_resp[json_len] = 0;
+        if (ret != ESP_OK) {
+            heap_caps_free(json_resp);
+            break;
+        }
+
+        cJSON *json_root = cJSON_Parse(json_resp);
+        if (!json_root) {
+            ESP_LOGE(TAG, "llm: invalid JSON response");
+            heap_caps_free(json_resp);
+            ret = ESP_FAIL;
+            break;
+        }
+        const cJSON *json_choices = cJSON_GetObjectItem(json_root, "choices");
+        const cJSON *json_message = (json_choices && cJSON_GetArraySize(json_choices) > 0)
+            ? cJSON_GetObjectItem(cJSON_GetArrayItem(json_choices, 0), "message") : NULL;
+        const cJSON *json_content = json_message
+            ? cJSON_GetObjectItem(json_message, "content") : NULL;
+        if (!json_content || !cJSON_IsString(json_content) || !json_content->valuestring[0]) {
+            ESP_LOGE(TAG, "llm: response has no assistant content");
+            cJSON_Delete(json_root);
+            heap_caps_free(json_resp);
+            ret = ESP_FAIL;
+            break;
+        }
+
+        strlcpy(out_text, json_content->valuestring, out_size);
+        if (cb && cb->on_llm_text) cb->on_llm_text(json_content->valuestring);
+        sentence_buf_t json_sb = {
+            .buf = heap_caps_malloc(512, MALLOC_CAP_SPIRAM),
+            .len = 0,
+            .cap = 512,
+        };
+        if (!json_sb.buf) {
+            cJSON_Delete(json_root);
+            heap_caps_free(json_resp);
+            ret = ESP_ERR_NO_MEM;
+            break;
+        }
+        bool json_spoke = false;
+        sentence_feed(&json_sb, json_content->valuestring, cb, &json_spoke);
+        sentence_flush(&json_sb, cb, &json_spoke);
+        heap_caps_free(json_sb.buf);
+        hist_push("assistant", out_text);
+        cJSON_Delete(json_root);
+        heap_caps_free(json_resp);
+        ret = ESP_OK;
+        break;
 
         static char read_buf[2048];
         static char line_buf[4096];
@@ -677,6 +747,14 @@ esp_err_t ai_converse(const int16_t *pcm, int samples, const ai_callbacks_t *cb,
         return ESP_ERR_NO_MEM;
     }
     esp_err_t ret = ai_asr(pcm, samples, cb, user_text, 2048);
+    if (ret != ESP_OK && ret != AI_ERR_ABORTED &&
+        !(cb && cb->aborted && cb->aborted())) {
+        /* A DNS query can fail transiently just after Wi-Fi obtains its IP.
+         * Retry once after the backup DNS configuration has taken effect. */
+        ESP_LOGW(TAG, "asr: retrying once after %s", esp_err_to_name(ret));
+        vTaskDelay(pdMS_TO_TICKS(500));
+        ret = ai_asr(pcm, samples, cb, user_text, 2048);
+    }
     if (ret != ESP_OK) {
         heap_caps_free(user_text);
         return ret;
