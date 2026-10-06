@@ -86,11 +86,26 @@ static bool on_local_command(const char *text)
 {
     uint8_t r = 0, g = 0, b = 0;
     const char *reply = NULL;
+    bool cjdh11b = strstr(text, "CJDH") || strstr(text, "cjdh") ||
+                   strstr(text, "11B") || strstr(text, "11b") ||
+                   strstr(text, "5脚") || strstr(text, "五脚");
     bool has_red = strstr(text, "红") != NULL;
     bool has_green = strstr(text, "绿") != NULL;
     bool has_blue = strstr(text, "蓝") != NULL;
 
-    if (strstr(text, "关灯") || strstr(text, "关闭灯") || strstr(text, "熄灭")) {
+    if (cjdh11b && (strstr(text, "关") || strstr(text, "停") || strstr(text, "关闭"))) {
+        if (board_cjdh11b_set(false) != ESP_OK) {
+            reply = "CJDH11B 控制失败，请检查 GPIO5 连接";
+        } else {
+            reply = "好的，已关闭 CJDH11B，GPIO5 输出低电平";
+        }
+    } else if (cjdh11b && (strstr(text, "开") || strstr(text, "启") || strstr(text, "打开"))) {
+        if (board_cjdh11b_set(true) != ESP_OK) {
+            reply = "CJDH11B 控制失败，请检查 GPIO5 连接";
+        } else {
+            reply = "好的，已打开 CJDH11B，GPIO5 输出高电平";
+        }
+    } else if (strstr(text, "关灯") || strstr(text, "关闭灯") || strstr(text, "熄灭")) {
         reply = "好的，已关闭灯光";
     } else if (strstr(text, "白") || strstr(text, "打开灯") || strstr(text, "开灯")) {
         r = 255;
