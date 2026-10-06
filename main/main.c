@@ -424,6 +424,11 @@ void app_main(void)
         app_ui_set_state(APP_STATE_ERROR);
         return;
     }
+    /* Temporary hardware validation: remove after confirming the speaker
+     * path and the mapped local TTS voice are stable. */
+    ESP_LOGI(TAG, "local TTS self-test: speaking through board speaker");
+    ESP_LOGI(TAG, "local TTS self-test result: %s",
+             esp_err_to_name(app_local_speak("本地语音测试成功")));
 #else
     app_wifi_start();
 #endif

@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_heap_caps.h"
+#include "esp_partition.h"
 #include "esp_mn_iface.h"
 #include "esp_mn_models.h"
 #include "esp_mn_speech_commands.h"
@@ -31,6 +32,9 @@ static srmodel_list_t *s_sr_models;
 static int16_t *s_mn_buf;
 static int s_mn_buf_count;
 static esp_tts_handle_t s_tts;
+static esp_tts_voice_t *s_voice;
+static const void *s_voice_data;
+static esp_partition_mmap_handle_t s_voice_mmap;
 
 /* MultiNet6 uses pinyin/grapheme tokens.  Variants share an ID so the user
  * can say either a natural phrase or the short color name. */
@@ -116,7 +120,28 @@ esp_err_t app_local_start(void)
         return ESP_ERR_NO_MEM;
     }
 
-    s_tts = esp_tts_create((esp_tts_voice_t *)&esp_tts_voice_xiaole);
+    /* esp_tts_voice_xiaole is a template: its syllable tables are in the
+     * firmware, while the AMR-WB syllable data lives in voice_data. */
+    const esp_partition_t *voice_part = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_FAT, "voice_data");
+    if (!voice_part) {
+        ESP_LOGE(TAG, "voice_data partition is missing");
+        return ESP_ERR_NOT_FOUND;
+    }
+    esp_err_t err = esp_partition_mmap(voice_part, 0, voice_part->size,
+                                       ESP_PARTITION_MMAP_DATA,
+                                       &s_voice_data, &s_voice_mmap);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "voice_data mmap failed: %s", esp_err_to_name(err));
+        return err;
+    }
+    s_voice = esp_tts_voice_set_init(&esp_tts_voice_xiaole,
+                                     (void *)s_voice_data);
+    if (!s_voice) {
+        ESP_LOGE(TAG, "xiaole voice data init failed");
+        return ESP_ERR_NO_MEM;
+    }
+    s_tts = esp_tts_create(s_voice);
     if (!s_tts) {
         ESP_LOGE(TAG, "local Chinese TTS create failed");
         return ESP_ERR_NO_MEM;
