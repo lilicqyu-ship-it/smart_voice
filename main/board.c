@@ -11,7 +11,6 @@
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_io_expander.h"
-#include "driver/gpio.h"
 #include "bsp/esp-bsp.h"
 #include "led_strip.h"
 
@@ -26,7 +25,9 @@ static const char *TAG = "board";
 #define BOARD_RGB_BLUE_PIN      IO_EXPANDER_PIN_NUM_3
 
 #define BOARD_LED_GPIO          GPIO_NUM_4
-#define BOARD_CJDH11B_GPIO      GPIO_NUM_5
+/* P4/EX_IO4 is the first free TCA9554 pin in the supplied schematic.  P0 is
+ * the amplifier enable and P1/P2/P3 are reserved for the external RGB LED. */
+#define BOARD_CJDH11B_EXPANDER_PIN IO_EXPANDER_PIN_NUM_4
 
 static esp_io_expander_handle_t s_expander;
 static led_strip_handle_t s_led;
@@ -74,18 +75,19 @@ esp_err_t board_rgb_set(uint8_t r, uint8_t g, uint8_t b)
 
 esp_err_t board_cjdh11b_set(bool enable)
 {
+    if (s_expander == NULL) {
+        s_expander = bsp_io_expander_init();
+        ESP_RETURN_ON_FALSE(s_expander != NULL, ESP_FAIL, TAG, "io expander init failed");
+    }
     if (!s_cjdh11b_configured) {
-        gpio_config_t cfg = {
-            .pin_bit_mask = 1ULL << BOARD_CJDH11B_GPIO,
-            .mode = GPIO_MODE_OUTPUT,
-            .pull_up_en = GPIO_PULLUP_DISABLE,
-            .pull_down_en = GPIO_PULLDOWN_DISABLE,
-            .intr_type = GPIO_INTR_DISABLE,
-        };
-        ESP_RETURN_ON_ERROR(gpio_config(&cfg), TAG, "CJDH11B GPIO5 config failed");
+        ESP_RETURN_ON_ERROR(esp_io_expander_set_dir(s_expander,
+                                                    BOARD_CJDH11B_EXPANDER_PIN,
+                                                    IO_EXPANDER_OUTPUT),
+                            TAG, "CJDH11B P4 direction failed");
         s_cjdh11b_configured = true;
     }
-    return gpio_set_level(BOARD_CJDH11B_GPIO, enable ? 1 : 0);
+    return esp_io_expander_set_level(s_expander, BOARD_CJDH11B_EXPANDER_PIN,
+                                     enable ? 1 : 0);
 }
 
 esp_err_t board_led_rgb(uint8_t r, uint8_t g, uint8_t b)
@@ -165,7 +167,6 @@ esp_err_t board_init(void)
     ESP_RETURN_ON_ERROR(led_strip_new_rmt_device(&strip_config, &rmt_config, &s_led),
                         TAG, "led strip init failed");
     led_strip_clear(s_led);
-    ESP_RETURN_ON_ERROR(board_cjdh11b_set(false), TAG, "CJDH11B safe-off failed");
 
     /* BOOT button (GPIO0, active low) doubles as an interrupt button. */
     button_handle_t btns[1] = { NULL };

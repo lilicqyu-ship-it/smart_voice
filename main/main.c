@@ -20,6 +20,7 @@
 #include "board.h"
 #include "board_audio.h"
 #include "app_afe.h"
+#include "app_local.h"
 #include "app_wifi.h"
 #include "app_ai.h"
 #include "app_ui.h"
@@ -82,10 +83,27 @@ static void on_speaking(void)
     set_state(APP_STATE_SPEAKING);
 }
 
+static void speak_local_reply(const char *reply)
+{
+    app_ui_assistant_begin();
+    app_ui_assistant_append(reply);
+    app_ui_assistant_end();
+    set_state(APP_STATE_SPEAKING);
+#if CONFIG_SMART_VOICE_OFFLINE_ONLY
+    esp_err_t err = app_local_speak(reply);
+#else
+    esp_err_t err = ai_speak_text(reply);
+#endif
+    if (err != ESP_OK && err != AI_ERR_ABORTED) {
+        ESP_LOGW(TAG, "local command speech failed: %s", esp_err_to_name(err));
+    }
+}
+
 static bool on_local_command(const char *text)
 {
     uint8_t r = 0, g = 0, b = 0;
     const char *reply = NULL;
+    bool light_command = false;
     bool cjdh11b = strstr(text, "CJDH") || strstr(text, "cjdh") ||
                    strstr(text, "11B") || strstr(text, "11b") ||
                    strstr(text, "5脚") || strstr(text, "五脚");
@@ -95,35 +113,40 @@ static bool on_local_command(const char *text)
 
     if (cjdh11b && (strstr(text, "关") || strstr(text, "停") || strstr(text, "关闭"))) {
         if (board_cjdh11b_set(false) != ESP_OK) {
-            reply = "CJDH11B 控制失败，请检查 GPIO5 连接";
+            reply = "CJDH11B 控制失败，请检查 EX_IO4 连接";
         } else {
-            reply = "好的，已关闭 CJDH11B，GPIO5 输出低电平";
+            reply = "好的，已关闭 CJDH11B，EX_IO4 输出低电平";
         }
     } else if (cjdh11b && (strstr(text, "开") || strstr(text, "启") || strstr(text, "打开"))) {
         if (board_cjdh11b_set(true) != ESP_OK) {
-            reply = "CJDH11B 控制失败，请检查 GPIO5 连接";
+            reply = "CJDH11B 控制失败，请检查 EX_IO4 连接";
         } else {
-            reply = "好的，已打开 CJDH11B，GPIO5 输出高电平";
+            reply = "好的，已打开 CJDH11B，EX_IO4 输出高电平";
         }
     } else if (strstr(text, "关灯") || strstr(text, "关闭灯") || strstr(text, "熄灭")) {
         reply = "好的，已关闭灯光";
+        light_command = true;
     } else if (strstr(text, "白") || strstr(text, "打开灯") || strstr(text, "开灯")) {
         r = 255;
         g = 255;
         b = 255;
         reply = "好的，已打开白灯";
+        light_command = true;
     } else if (strstr(text, "黄")) {
         r = 255;
         g = 255;
         reply = "好的，已切换为黄灯";
+        light_command = true;
     } else if (strstr(text, "紫")) {
         r = 255;
         b = 255;
         reply = "好的，已切换为紫灯";
+        light_command = true;
     } else if (strstr(text, "青")) {
         g = 255;
         b = 255;
         reply = "好的，已切换为青灯";
+        light_command = true;
     } else if (has_red || has_green || has_blue) {
         r = has_red ? 255 : 0;
         g = has_green ? 255 : 0;
@@ -143,22 +166,58 @@ static bool on_local_command(const char *text)
         } else {
             reply = "好的，已打开蓝灯";
         }
+        light_command = true;
     } else {
         return false;
     }
 
-    if (board_rgb_set(r, g, b) != ESP_OK) {
+    if (light_command && board_rgb_set(r, g, b) != ESP_OK) {
         reply = "灯光控制失败，请检查 RGB 灯连接";
     }
-    app_ui_assistant_begin();
-    app_ui_assistant_append(reply);
-    app_ui_assistant_end();
-    set_state(APP_STATE_SPEAKING);
-    esp_err_t err = ai_speak_text(reply);
-    if (err != ESP_OK && err != AI_ERR_ABORTED) {
-        ESP_LOGW(TAG, "local command TTS failed: %s", esp_err_to_name(err));
-    }
+    speak_local_reply(reply);
     return true;
+}
+
+static void on_local_command_id(int command_id)
+{
+    uint8_t r = 0, g = 0, b = 0;
+    const char *reply = NULL;
+    esp_err_t err = ESP_OK;
+
+    switch (command_id) {
+    case APP_LOCAL_CMD_RED:
+        r = 255; reply = "好的，已打开红灯"; break;
+    case APP_LOCAL_CMD_GREEN:
+        g = 255; reply = "好的，已打开绿灯"; break;
+    case APP_LOCAL_CMD_BLUE:
+        b = 255; reply = "好的，已打开蓝灯"; break;
+    case APP_LOCAL_CMD_WHITE:
+        r = g = b = 255; reply = "好的，已打开白灯"; break;
+    case APP_LOCAL_CMD_YELLOW:
+        r = g = 255; reply = "好的，已切换为黄灯"; break;
+    case APP_LOCAL_CMD_PURPLE:
+        r = b = 255; reply = "好的，已切换为紫灯"; break;
+    case APP_LOCAL_CMD_CYAN:
+        g = b = 255; reply = "好的，已切换为青灯"; break;
+    case APP_LOCAL_CMD_LIGHT_OFF:
+        reply = "好的，已关闭灯光"; break;
+    case APP_LOCAL_CMD_CJDH_ON:
+        err = board_cjdh11b_set(true);
+        reply = err == ESP_OK ? "好的，已打开设备" : "设备控制失败，请检查接线";
+        break;
+    case APP_LOCAL_CMD_CJDH_OFF:
+        err = board_cjdh11b_set(false);
+        reply = err == ESP_OK ? "好的，已关闭设备" : "设备控制失败，请检查接线";
+        break;
+    default:
+        ESP_LOGW(TAG, "unknown offline command id=%d", command_id);
+        return;
+    }
+
+    if (command_id <= APP_LOCAL_CMD_LIGHT_OFF && board_rgb_set(r, g, b) != ESP_OK) {
+        reply = "灯光控制失败，请检查 RGB 灯连接";
+    }
+    speak_local_reply(reply);
 }
 
 static bool ai_aborted(void);
@@ -264,6 +323,11 @@ static void state_task(void *arg)
 
         case APP_EVT_RECORD_DONE:
             if (g_app_state == APP_STATE_LISTENING) {
+#if CONFIG_SMART_VOICE_OFFLINE_ONLY
+                (void)ev;
+                set_state(APP_STATE_IDLE);
+                show_error("没有识别到本地指令，请再说一遍");
+#else
                 if (s_ai_running) {
                     /* The previous cloud round is being cancelled.  Keep the
                      * fresh recording in g_rec_buf and dispatch it after the
@@ -273,6 +337,7 @@ static void state_task(void *arg)
                     set_state(APP_STATE_IDLE);
                     show_error("语音任务暂时繁忙，请稍后再试");
                 }
+#endif
             }
             break;
 
@@ -284,6 +349,7 @@ static void state_task(void *arg)
             break;
 
         case APP_EVT_AI_DONE:
+#if !CONFIG_SMART_VOICE_OFFLINE_ONLY
             s_ai_running = false;
             if (g_app_state == APP_STATE_LISTENING) {
                 if (s_pending_samples > 0) {
@@ -295,6 +361,15 @@ static void state_task(void *arg)
                 }
             } else if (g_app_state == APP_STATE_THINKING ||
                        g_app_state == APP_STATE_SPEAKING) {
+                set_state(APP_STATE_IDLE);
+            }
+#endif
+            break;
+
+        case APP_EVT_LOCAL_COMMAND:
+            if (g_app_state == APP_STATE_LISTENING) {
+                set_state(APP_STATE_THINKING);
+                on_local_command_id(ev.arg0);
                 set_state(APP_STATE_IDLE);
             }
             break;
@@ -337,10 +412,21 @@ void app_main(void)
 
     /* Display first: it also brings up the I2C bus the codecs sit on. */
     app_ui_init();
+    /* TCA9554/P4 is only accessible after the BSP I2C bus exists. */
+    ESP_ERROR_CHECK(board_cjdh11b_set(false));
     ESP_ERROR_CHECK(board_rgb_set(0, 0, 0));
     ESP_ERROR_CHECK(board_audio_init());
 
+#if CONFIG_SMART_VOICE_OFFLINE_ONLY
+    ret = app_local_start();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "offline voice init failed: %s", esp_err_to_name(ret));
+        app_ui_set_state(APP_STATE_ERROR);
+        return;
+    }
+#else
     app_wifi_start();
+#endif
 
     ret = app_afe_start();
     if (ret != ESP_OK) {
@@ -349,6 +435,7 @@ void app_main(void)
         return;
     }
 
+#if !CONFIG_SMART_VOICE_OFFLINE_ONLY
     size_t max_samples = CONFIG_SMART_VOICE_RECORD_MAX_MS * APP_AUDIO_SAMPLE_RATE / 1000;
     s_ai_pcm = heap_caps_malloc(max_samples * sizeof(int16_t),
                                 MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -372,6 +459,7 @@ void app_main(void)
         app_ui_set_state(APP_STATE_ERROR);
         return;
     }
+#endif
 
     BaseType_t state_ret = xTaskCreatePinnedToCoreWithCaps(
         state_task, "state", STATE_TASK_STACK_SIZE, NULL, 4, NULL, 1,

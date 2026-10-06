@@ -1,5 +1,14 @@
 menu "Smart Voice Configuration"
 
+    config SMART_VOICE_OFFLINE_ONLY
+        bool "Offline fixed-command voice control only"
+        default y
+        help
+            Run the wake word, fixed Chinese speech commands, and local TTS
+            entirely on the ESP32-S3 without starting Wi-Fi. Disable this
+            option to retain the cloud ASR/LLM/TTS fallback for open-ended
+            conversation.
+
     menu "WiFi Station"
         config SMART_VOICE_WIFI_SSID
             string "WiFi SSID"

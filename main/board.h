@@ -16,7 +16,7 @@ esp_err_t board_pa_enable(bool enable);
 /* External RGB LED on TCA9554: P1=G, P2=R, P3=B. */
 esp_err_t board_rgb_set(uint8_t r, uint8_t g, uint8_t b);
 
-/* CJDH11B control input is wired to ESP32 GPIO5. */
+/* CJDH11B control output: TCA9554 P4 / EX_IO4. */
 esp_err_t board_cjdh11b_set(bool enable);
 
 /* Set the on-board WS2812 (GPIO4). */

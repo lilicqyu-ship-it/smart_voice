@@ -1,9 +1,9 @@
 # smart_voice — AI 语音交互助手
 
-基于 **ESP32-S3-LCD-EV-Board**（主板 v1.5 + SUB3 屏）的离线唤醒 + 云端大模型语音对话系统：
+基于 **ESP32-S3-LCD-EV-Board**（主板 v1.5 + SUB3 屏）的离线唤醒 + 本地固定指令语音控制系统：
 
 ```
- 说「你好小智」 ──► 聆听（VAD 断句） ──► 云端 ASR ──► 大模型流式回答 ──► TTS 合成 ──► 喇叭播放
+ 说「你好小智」 ──► 聆听 ──► ESP-SR MultiNet 本地指令识别 ──► 本地 TTS ──► 喇叭播放
       ▲                                                                            │
       └────────────────────── 点按屏幕 / BOOT 键可打断并重新说话 ◄──────────────────┘
 ```
@@ -11,9 +11,9 @@
 ## 功能
 
 - **离线唤醒词**：esp-sr WakeNet9，「你好小智」（在 menuconfig 中可换「Hi,ESP」「你好小鑫」等）
-- **语音识别**：OpenAI 兼容接口（默认 SiliconFlow SenseVoice，中英文均可）
-- **大模型对话**：SSE 流式输出，逐句送 TTS，首句延迟低；支持多轮上下文
-- **语音合成**：整句合成 WAV 后播放，自动重采样到 16 kHz
+- **离线语音控制**：MultiNet6 本地识别 RGB 灯和 CJDH11B 固定指令，不依赖网络
+- **离线语音播报**：ESP-SR 中文 TTS 直接通过喇叭播报确认
+- **云端对话**：关闭离线模式后仍可使用 OpenAI 兼容接口进行 ASR/LLM/TTS
 - **屏幕 UI**：LVGL 9 中文界面（状态动画 + 对话气泡），GT1151 电容触摸
 - **打断**：播放/思考中点按屏幕或按 BOOT 键，立即停止并进入聆听
 - **状态灯**：板载 WS2812 呼吸灯跟随状态（绿=聆听，蓝闪=思考，青=播报，红=错误）
@@ -26,6 +26,8 @@
 | 触摸 | GT1151 (I2C) | SDA=47, SCL=48（v1.5；v1.4 为 8/18，BSP 按模组自动探测） |
 | 喇叭 | ES8311 + NS4150 | I2S: MCLK=5, BCLK=16, WS=7, DOUT=6；功放=TCA9554 P0 |
 | 麦克风 | ES7210 双麦 | I2S DIN=15；I2C 地址 0x82（8 位） |
+| 外接 RGB 灯 | TCA9554 | P1=G，P2=R，P3=B |
+| CJDH11B 控制 | TCA9554 | P4 / EX_IO4，高电平打开、低电平关闭 |
 | 状态灯 | WS2812 | GPIO4 |
 | 按键 | BOOT | GPIO0 |
 
@@ -65,8 +67,8 @@ idf.py -p /dev/tty.usbmodemXXXX flash monitor   # flash 会同时烧录唤醒词
 
 ## 使用
 
-1. 上电等待 WiFi 连接（屏幕右上角显示 IP）；
-2. 说「**你好小智**」，听到提示音后开始说话，停顿约 0.8 s 自动断句；
+1. 上电等待离线语音模型初始化完成；
+2. 说「**你好小智**」，听到提示音后说「打开红灯」「打开蓝灯」「关闭灯」「打开设备」等固定指令；
 3. 助手回答会逐句播报；期间**点按屏幕**可打断并直接再次说话；
 4. 没有唤醒词时点按屏幕（或 BOOT 键）也可以直接开启对话。
 
@@ -90,7 +92,8 @@ main/
 ├── main.c          应用状态机（IDLE/LISTENING/THINKING/SPEAKING）
 ├── board.c         WS2812 状态灯、BOOT 按键、功放控制（TCA9554）
 ├── board_audio.c   I2S 双工 + ES8311 播放 + ES7210 双麦录音
-├── app_afe.c       esp-sr AFE：喂音/检出双任务，唤醒词 + VAD 断句 + 录音
+├── app_afe.c       esp-sr AFE：喂音/检出双任务，唤醒词 + VAD + 本地命令识别
+├── app_local.c     MultiNet6 本地固定命令 + 中文 TTS
 ├── app_wifi.c      WiFi STA + SNTP
 ├── app_ai.c        ASR(multipart) / LLM(SSE 流式+分句) / TTS(WAV 下载+重采样)
 ├── app_ui.c        LVGL 界面（状态动画、对话气泡、触屏打断）
