@@ -64,7 +64,7 @@ static int s_bar_frame;
 static const char *state_text(app_state_t st)
 {
     switch (st) {
-    case APP_STATE_IDLE:      return "说「你好小智」开始对话";
+    case APP_STATE_IDLE:      return "说「你好,小鱼」开始对话";
     case APP_STATE_LISTENING: return "聆听中…";
     case APP_STATE_THINKING:  return "思考中…";
     case APP_STATE_SPEAKING:  return "说话中（点按屏幕可打断）";
@@ -306,7 +306,7 @@ void app_ui_init(void)
     lv_obj_t *title = lv_label_create(top);
     lv_obj_set_style_text_font(title, FONT_CJK, 0);
     lv_obj_set_style_text_color(title, COL_TEXT, 0);
-    lv_label_set_text(title, "小智 · 智能语音助手");
+    lv_label_set_text(title, "小鱼 · 智能语音助手");
     lv_obj_align(title, LV_ALIGN_LEFT_MID, 0, 0);
 
     s_wifi_label = lv_label_create(top);
@@ -398,7 +398,7 @@ void app_ui_init(void)
     lv_obj_set_scrollbar_mode(s_chat_list, LV_SCROLLBAR_MODE_AUTO);
     lv_obj_set_flex_flow(s_chat_list, LV_FLEX_FLOW_COLUMN);
 
-    add_bubble("你好！我是语音助手，说「你好小智」开始对话。", false);
+    add_bubble("你好,小鱼！我是在线语音助手，说「你好,小鱼」开始对话。", false);
 
     lvgl_port_unlock();
 

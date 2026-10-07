@@ -4,7 +4,7 @@ dependencies:
   # + esp_lvgl_port (LVGL9).  Pins/timing mirror bsp/esp32_s3_lcd_ev_board.
   espressif/esp32_s3_lcd_ev_board: "^4.1.0"
 
-  # Wake word / audio front end (wakenet9 "你好小智")
+  # Wake word / audio front end (wakenet9 model)
   espressif/esp-sr: "^2.5.5"
 
   # JSON (IDF 6 removed the built-in 'json' component)

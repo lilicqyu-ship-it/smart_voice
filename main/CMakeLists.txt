@@ -4,7 +4,6 @@ set(MAIN_SRCS
     "board.c"
     "board_audio.c"
     "app_afe.c"
-    "app_local.c"
     "app_wifi.c"
     "app_ai.c"
     "app_ui.c"

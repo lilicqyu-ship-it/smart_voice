@@ -62,15 +62,9 @@ CONFIG_LV_DEF_REFR_PERIOD=16
 # Keep lwIP off core 1, where the LVGL task is pinned (see app_ui.c).
 CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y
 
-# esp-sr: wake word "你好小智" (wn9s model)
+# esp-sr wake-word model retained for the local audio front end.
 CONFIG_SR_WN_WN9_NIHAOXIAOZHI_TTS=y
-
-# Offline fixed Chinese speech commands.  This keeps simple hardware control
-# on the ESP32-S3 and avoids the network ASR/LLM path entirely.
-CONFIG_SR_MN_CN_MULTINET6_QUANT=y
-
-# Offline mode: no Wi-Fi is started for simple voice control.
-CONFIG_SMART_VOICE_OFFLINE_ONLY=y
+CONFIG_SR_MN_CN_NONE=y
 
 # LVGL 9
 CONFIG_LV_COLOR_DEPTH=16

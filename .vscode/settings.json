@@ -33,5 +33,5 @@
     "--compile-commands-dir=/Users/kunlong/Documents/Code/Esp32/smart_voice/build"
   ],
   "idf.flashType": "UART",
-  "idf.port": "/dev/tty.usbmodem11401"
+  "idf.port": "/dev/tty.usbmodem11201"
 }

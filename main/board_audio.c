@@ -84,6 +84,10 @@ esp_err_t board_audio_init(void)
     i2c_master_bus_handle_t i2c_bus = bsp_i2c_get_handle();
     ESP_RETURN_ON_FALSE(i2c_bus != NULL, ESP_FAIL, TAG, "i2c bus not ready (call BSP display init first)");
 
+    /* Establish a known-safe amplifier state before touching the codec. */
+    ESP_RETURN_ON_ERROR(board_pa_enable(false), TAG, "disable speaker PA");
+    s_pa_on = false;
+
     /* ---- ES8311: speaker path ---- */
     audio_codec_i2c_cfg_t i2c_cfg_spk = {
         .port = BSP_I2C_NUM,
@@ -173,13 +177,19 @@ esp_err_t board_audio_set_volume(int volume)
     return esp_codec_dev_set_out_vol(s_play_dev, volume);
 }
 
-static void pa_set(bool on)
+static esp_err_t pa_set(bool on)
 {
     if (s_pa_on == on) {
-        return;
+        return ESP_OK;
     }
-    board_pa_enable(on);
-    s_pa_on = on;
+    esp_err_t ret = board_pa_enable(on);
+    if (ret == ESP_OK) {
+        s_pa_on = on;
+    } else {
+        ESP_LOGE(TAG, "speaker PA %s failed: %s", on ? "on" : "off",
+                 esp_err_to_name(ret));
+    }
+    return ret;
 }
 
 esp_err_t board_audio_play_mono(const int16_t *mono, size_t samples, volatile bool *abort)
@@ -196,8 +206,9 @@ esp_err_t board_audio_play_mono(const int16_t *mono, size_t samples, volatile bo
     static int16_t stereo[4 * APP_AUDIO_SAMPLE_RATE / 1000 * APP_AUDIO_CHANNELS]; /* 64 ms */
     const size_t chunk_frames = sizeof(stereo) / sizeof(stereo[0]) / APP_AUDIO_CHANNELS;
 
-    esp_codec_dev_set_out_mute(s_play_dev, false);
-    pa_set(true);
+    ESP_RETURN_ON_ERROR(esp_codec_dev_set_out_mute(s_play_dev, false), TAG,
+                        "unmute speaker");
+    ESP_RETURN_ON_ERROR(pa_set(true), TAG, "enable speaker PA");
     vTaskDelay(pdMS_TO_TICKS(20));   /* let the amp settle to avoid a pop */
 
     size_t done = 0;
@@ -223,8 +234,14 @@ esp_err_t board_audio_play_mono(const int16_t *mono, size_t samples, volatile bo
     }
 
     vTaskDelay(pdMS_TO_TICKS(120));  /* let the last DMA frame drain before cutting the amp */
-    esp_codec_dev_set_out_mute(s_play_dev, true);
-    pa_set(false);
+    esp_err_t mute_ret = esp_codec_dev_set_out_mute(s_play_dev, true);
+    esp_err_t pa_ret = pa_set(false);
+    if (ret == ESP_OK && mute_ret != ESP_OK) {
+        ret = mute_ret;
+    }
+    if (ret == ESP_OK && pa_ret != ESP_OK) {
+        ret = pa_ret;
+    }
     return ret;
 }
 

@@ -768,12 +768,13 @@ esp_err_t ai_converse(const int16_t *pcm, int samples, const ai_callbacks_t *cb,
         return AI_ERR_NO_SPEECH;
     }
     if (cb && cb->on_asr_text) cb->on_asr_text(user_text);
-    bool local_handled = cb && cb->on_local_command && cb->on_local_command(user_text);
+    bool hardware_handled = cb && cb->on_hardware_command &&
+                            cb->on_hardware_command(user_text);
     hist_push("user", user_text);
     heap_caps_free(user_text);
 
-    if (local_handled) {
-        return AI_ERR_LOCAL_HANDLED;
+    if (hardware_handled) {
+        return AI_ERR_HARDWARE_HANDLED;
     }
 
     ret = ai_llm_stream(cb, out_text, out_size);

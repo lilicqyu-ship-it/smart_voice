@@ -1,7 +1,7 @@
 /*
  * smart_voice - AI voice assistant for ESP32-S3-LCD-EV-Board
  *
- * Wake word ("你好小智") -> record -> cloud ASR -> LLM (streamed) -> TTS.
+ * Wake word ("你好,小鱼") -> record -> online ASR -> LLM (streamed) -> TTS.
  * Tap the screen (or press BOOT) to talk / interrupt playback.
  *
  * SPDX-License-Identifier: MIT
@@ -20,7 +20,6 @@
 #include "board.h"
 #include "board_audio.h"
 #include "app_afe.h"
-#include "app_local.h"
 #include "app_wifi.h"
 #include "app_ai.h"
 #include "app_ui.h"
@@ -83,23 +82,19 @@ static void on_speaking(void)
     set_state(APP_STATE_SPEAKING);
 }
 
-static void speak_local_reply(const char *reply)
+static void speak_command_reply(const char *reply)
 {
     app_ui_assistant_begin();
     app_ui_assistant_append(reply);
     app_ui_assistant_end();
     set_state(APP_STATE_SPEAKING);
-#if CONFIG_SMART_VOICE_OFFLINE_ONLY
-    esp_err_t err = app_local_speak(reply);
-#else
     esp_err_t err = ai_speak_text(reply);
-#endif
     if (err != ESP_OK && err != AI_ERR_ABORTED) {
-        ESP_LOGW(TAG, "local command speech failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, "command reply speech failed: %s", esp_err_to_name(err));
     }
 }
 
-static bool on_local_command(const char *text)
+static bool on_hardware_command(const char *text)
 {
     uint8_t r = 0, g = 0, b = 0;
     const char *reply = NULL;
@@ -174,50 +169,8 @@ static bool on_local_command(const char *text)
     if (light_command && board_rgb_set(r, g, b) != ESP_OK) {
         reply = "灯光控制失败，请检查 RGB 灯连接";
     }
-    speak_local_reply(reply);
+    speak_command_reply(reply);
     return true;
-}
-
-static void on_local_command_id(int command_id)
-{
-    uint8_t r = 0, g = 0, b = 0;
-    const char *reply = NULL;
-    esp_err_t err = ESP_OK;
-
-    switch (command_id) {
-    case APP_LOCAL_CMD_RED:
-        r = 255; reply = "好的，已打开红灯"; break;
-    case APP_LOCAL_CMD_GREEN:
-        g = 255; reply = "好的，已打开绿灯"; break;
-    case APP_LOCAL_CMD_BLUE:
-        b = 255; reply = "好的，已打开蓝灯"; break;
-    case APP_LOCAL_CMD_WHITE:
-        r = g = b = 255; reply = "好的，已打开白灯"; break;
-    case APP_LOCAL_CMD_YELLOW:
-        r = g = 255; reply = "好的，已切换为黄灯"; break;
-    case APP_LOCAL_CMD_PURPLE:
-        r = b = 255; reply = "好的，已切换为紫灯"; break;
-    case APP_LOCAL_CMD_CYAN:
-        g = b = 255; reply = "好的，已切换为青灯"; break;
-    case APP_LOCAL_CMD_LIGHT_OFF:
-        reply = "好的，已关闭灯光"; break;
-    case APP_LOCAL_CMD_CJDH_ON:
-        err = board_cjdh11b_set(true);
-        reply = err == ESP_OK ? "好的，已打开设备" : "设备控制失败，请检查接线";
-        break;
-    case APP_LOCAL_CMD_CJDH_OFF:
-        err = board_cjdh11b_set(false);
-        reply = err == ESP_OK ? "好的，已关闭设备" : "设备控制失败，请检查接线";
-        break;
-    default:
-        ESP_LOGW(TAG, "unknown offline command id=%d", command_id);
-        return;
-    }
-
-    if (command_id <= APP_LOCAL_CMD_LIGHT_OFF && board_rgb_set(r, g, b) != ESP_OK) {
-        reply = "灯光控制失败，请检查 RGB 灯连接";
-    }
-    speak_local_reply(reply);
 }
 
 static bool ai_aborted(void);
@@ -228,7 +181,7 @@ static const ai_callbacks_t s_ai_cbs = {
     .on_llm_text = on_llm_text,
     .on_speaking = on_speaking,
     .aborted = ai_aborted,
-    .on_local_command = on_local_command,
+    .on_hardware_command = on_hardware_command,
 };
 
 static QueueHandle_t s_ai_jobs;
@@ -263,8 +216,8 @@ static esp_err_t ai_round(const int16_t *pcm, int samples)
         ESP_LOGW(TAG, "interrupted");
     } else if (err == AI_ERR_NO_SPEECH) {
         show_error("没有听清，请再说一遍");
-    } else if (err == AI_ERR_LOCAL_HANDLED) {
-        ESP_LOGI(TAG, "local hardware command handled");
+    } else if (err == AI_ERR_HARDWARE_HANDLED) {
+        ESP_LOGI(TAG, "hardware command handled");
     } else if (!app_wifi_is_connected()) {
         show_error("网络未连接，请检查 WiFi 配置");
     } else {
@@ -323,11 +276,6 @@ static void state_task(void *arg)
 
         case APP_EVT_RECORD_DONE:
             if (g_app_state == APP_STATE_LISTENING) {
-#if CONFIG_SMART_VOICE_OFFLINE_ONLY
-                (void)ev;
-                set_state(APP_STATE_IDLE);
-                show_error("没有识别到本地指令，请再说一遍");
-#else
                 if (s_ai_running) {
                     /* The previous cloud round is being cancelled.  Keep the
                      * fresh recording in g_rec_buf and dispatch it after the
@@ -337,7 +285,6 @@ static void state_task(void *arg)
                     set_state(APP_STATE_IDLE);
                     show_error("语音任务暂时繁忙，请稍后再试");
                 }
-#endif
             }
             break;
 
@@ -349,7 +296,6 @@ static void state_task(void *arg)
             break;
 
         case APP_EVT_AI_DONE:
-#if !CONFIG_SMART_VOICE_OFFLINE_ONLY
             s_ai_running = false;
             if (g_app_state == APP_STATE_LISTENING) {
                 if (s_pending_samples > 0) {
@@ -361,15 +307,6 @@ static void state_task(void *arg)
                 }
             } else if (g_app_state == APP_STATE_THINKING ||
                        g_app_state == APP_STATE_SPEAKING) {
-                set_state(APP_STATE_IDLE);
-            }
-#endif
-            break;
-
-        case APP_EVT_LOCAL_COMMAND:
-            if (g_app_state == APP_STATE_LISTENING) {
-                set_state(APP_STATE_THINKING);
-                on_local_command_id(ev.arg0);
                 set_state(APP_STATE_IDLE);
             }
             break;
@@ -417,21 +354,7 @@ void app_main(void)
     ESP_ERROR_CHECK(board_rgb_set(0, 0, 0));
     ESP_ERROR_CHECK(board_audio_init());
 
-#if CONFIG_SMART_VOICE_OFFLINE_ONLY
-    ret = app_local_start();
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "offline voice init failed: %s", esp_err_to_name(ret));
-        app_ui_set_state(APP_STATE_ERROR);
-        return;
-    }
-    /* Temporary hardware validation: remove after confirming the speaker
-     * path and the mapped local TTS voice are stable. */
-    ESP_LOGI(TAG, "local TTS self-test: speaking through board speaker");
-    ESP_LOGI(TAG, "local TTS self-test result: %s",
-             esp_err_to_name(app_local_speak("本地语音测试成功")));
-#else
     app_wifi_start();
-#endif
 
     ret = app_afe_start();
     if (ret != ESP_OK) {
@@ -440,7 +363,6 @@ void app_main(void)
         return;
     }
 
-#if !CONFIG_SMART_VOICE_OFFLINE_ONLY
     size_t max_samples = CONFIG_SMART_VOICE_RECORD_MAX_MS * APP_AUDIO_SAMPLE_RATE / 1000;
     s_ai_pcm = heap_caps_malloc(max_samples * sizeof(int16_t),
                                 MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -464,7 +386,6 @@ void app_main(void)
         app_ui_set_state(APP_STATE_ERROR);
         return;
     }
-#endif
 
     BaseType_t state_ret = xTaskCreatePinnedToCoreWithCaps(
         state_task, "state", STATE_TASK_STACK_SIZE, NULL, 4, NULL, 1,

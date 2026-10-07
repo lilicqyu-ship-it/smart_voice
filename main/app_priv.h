@@ -33,7 +33,6 @@ typedef enum {
     APP_EVT_RECORD_ABORT,   /* no usable speech captured */
     APP_EVT_TOUCH,          /* user tapped the screen */
     APP_EVT_AI_DONE,        /* arg0: ai_converse() result */
-    APP_EVT_LOCAL_COMMAND,  /* arg0: offline MultiNet command ID */
 } app_event_id_t;
 
 typedef struct {

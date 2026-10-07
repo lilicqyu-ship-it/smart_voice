@@ -23,7 +23,6 @@
 
 #include "app_priv.h"
 #include "board_audio.h"
-#include "app_local.h"
 
 static const char *TAG = "afe";
 
@@ -170,14 +169,6 @@ static void fetch_task(void *arg)
             }
 
             int samples = res->data_size / sizeof(int16_t);
-            if (app_local_feed(res->data, samples)) {
-                /* MultiNet has already posted the command event.  Stop this
-                 * recording immediately so the next wake starts cleanly. */
-                s_mode = REC_ST_MONITOR;
-                g_rec_samples = 0;
-                break;
-            }
-
             size_t max_samples = CONFIG_SMART_VOICE_RECORD_MAX_MS * APP_AUDIO_SAMPLE_RATE / 1000;
             int copy = samples;
             if (g_rec_samples + copy > (int)max_samples) {

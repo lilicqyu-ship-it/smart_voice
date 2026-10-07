@@ -12,7 +12,7 @@
 /* ai_converse() was interrupted by the user (screen tap / button). */
 #define AI_ERR_ABORTED      ((esp_err_t)0x3f0)
 #define AI_ERR_NO_SPEECH    ((esp_err_t)0x3f1)
-#define AI_ERR_LOCAL_HANDLED ((esp_err_t)0x3f2)
+#define AI_ERR_HARDWARE_HANDLED ((esp_err_t)0x3f2)
 
 typedef struct {
     /* UI notifications, all called from the caller's task */
@@ -21,7 +21,7 @@ typedef struct {
     void (*on_llm_text)(const char *chunk);     /* streamed LLM delta */
     void (*on_speaking)(void);                  /* a TTS sentence starts */
     bool (*aborted)(void);                      /* return true to interrupt */
-    bool (*on_local_command)(const char *text); /* handled without LLM */
+    bool (*on_hardware_command)(const char *text); /* handled by the board */
 } ai_callbacks_t;
 
 esp_err_t ai_converse(const int16_t *pcm, int samples, const ai_callbacks_t *cb,

@@ -1,19 +1,19 @@
 # smart_voice — AI 语音交互助手
 
-基于 **ESP32-S3-LCD-EV-Board**（主板 v1.5 + SUB3 屏）的离线唤醒 + 本地固定指令语音控制系统：
+基于 **ESP32-S3-LCD-EV-Board**（主板 v1.5 + SUB3 屏）的在线语音交互助手：
 
 ```
- 说「你好小智」 ──► 聆听 ──► ESP-SR MultiNet 本地指令识别 ──► 本地 TTS ──► 喇叭播放
+ 说「你好,小鱼」 ──► 聆听 ──► 在线 ASR ──► 在线 LLM ──► 在线 TTS ──► 喇叭播放
       ▲                                                                            │
       └────────────────────── 点按屏幕 / BOOT 键可打断并重新说话 ◄──────────────────┘
 ```
 
 ## 功能
 
-- **离线唤醒词**：esp-sr WakeNet9，「你好小智」（在 menuconfig 中可换「Hi,ESP」「你好小鑫」等）
-- **离线语音控制**：MultiNet6 本地识别 RGB 灯和 CJDH11B 固定指令，不依赖网络
-- **离线语音播报**：ESP-SR 中文 TTS 直接通过喇叭播报确认
-- **云端对话**：关闭离线模式后仍可使用 OpenAI 兼容接口进行 ASR/LLM/TTS
+- **语音提示语**：`你好,小鱼`；语音服务均通过在线 API 完成
+- **在线语音服务**：OpenAI 兼容接口提供 ASR、LLM 和 TTS
+- **硬件控制**：在线 ASR 识别到灯光或 CJDH11B 指令后，由 ESP32 执行控制并通过在线 TTS 回复
+- **提示语**：`你好,小鱼`
 - **屏幕 UI**：LVGL 9 中文界面（状态动画 + 对话气泡），GT1151 电容触摸
 - **打断**：播放/思考中点按屏幕或按 BOOT 键，立即停止并进入聆听
 - **状态灯**：板载 WS2812 呼吸灯跟随状态（绿=聆听，蓝闪=思考，青=播报，红=错误）
@@ -67,8 +67,8 @@ idf.py -p /dev/tty.usbmodemXXXX flash monitor   # flash 会同时烧录唤醒词
 
 ## 使用
 
-1. 上电等待离线语音模型初始化完成；
-2. 说「**你好小智**」，听到提示音后说「打开红灯」「打开蓝灯」「关闭灯」「打开设备」等固定指令；
+1. 上电等待 Wi-Fi 连接；
+2. 说「**你好,小鱼**」，听到提示音后说出问题或硬件指令；
 3. 助手回答会逐句播报；期间**点按屏幕**可打断并直接再次说话；
 4. 没有唤醒词时点按屏幕（或 BOOT 键）也可以直接开启对话。
 
@@ -92,8 +92,7 @@ main/
 ├── main.c          应用状态机（IDLE/LISTENING/THINKING/SPEAKING）
 ├── board.c         WS2812 状态灯、BOOT 按键、功放控制（TCA9554）
 ├── board_audio.c   I2S 双工 + ES8311 播放 + ES7210 双麦录音
-├── app_afe.c       esp-sr AFE：喂音/检出双任务，唤醒词 + VAD + 本地命令识别
-├── app_local.c     MultiNet6 本地固定命令 + 中文 TTS
+├── app_afe.c       esp-sr AFE：喂音/检出双任务，唤醒词 + VAD
 ├── app_wifi.c      WiFi STA + SNTP
 ├── app_ai.c        ASR(multipart) / LLM(SSE 流式+分句) / TTS(WAV 下载+重采样)
 ├── app_ui.c        LVGL 界面（状态动画、对话气泡、触屏打断）
